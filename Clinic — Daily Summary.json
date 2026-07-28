@@ -1,0 +1,146 @@
+{
+  "name": "Clinic — Daily Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 18
+            }
+          ]
+        }
+      },
+      "id": "2927d093-9e2b-40ff-9e32-7270a92cf2eb",
+      "name": "Daily 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1wB8a3ZSLoBaHL5U9-AVeBbl4AoS8Dg5DTeLX_4D2pwk",
+          "mode": "list",
+          "cachedResultName": "Clinic",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wB8a3ZSLoBaHL5U9-AVeBbl4AoS8Dg5DTeLX_4D2pwk/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "482ed06e-79db-41b6-ba81-ca0e92f96da4",
+      "name": "Read Appointments",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        224,
+        0
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "FECeXdug6Q6YH86c",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst zone = 'Asia/Karachi';\nconst now = DateTime.now().setZone(zone);\nconst todayStr = now.toFormat('yyyy-LL-dd');\nconst tomorrow = now.plus({ days: 1 });\nconst tomorrowStr = tomorrow.toFormat('yyyy-LL-dd');\n\n// Filter out empty-json items (alwaysOutputData produces {} on empty sheet)\nconst rows = $input.all()\n  .map(i => i.json || {})\n  .filter(r => Object.keys(r).length > 0);\n\nfunction parseDate(v) {\n  const raw = String(v || '').trim();\n  if (!raw) return null;\n  let dt = DateTime.fromISO(raw, { zone });\n  if (!dt.isValid) dt = DateTime.fromISO(raw).setZone(zone);\n  return dt.isValid ? dt : null;\n}\n\nconst tomorrowAppts = [];\nconst todayCancellations = [];\n\nfor (const r of rows) {\n  const status = String(r.status || '').toLowerCase().trim();\n  const dt = parseDate(r.appointment_datetime);\n  if (!dt) continue;\n  const dayStr = dt.toFormat('yyyy-LL-dd');\n\n  if ((status === 'booked' || status === 'confirmed') && dayStr === tomorrowStr) {\n    tomorrowAppts.push({\n      time: dt.toFormat('hh:mm a'),\n      sortKey: dt.toMillis(),\n      patient: String(r.patient_name || 'Unknown patient'),\n      doctor: String(r.doctor || 'Unassigned'),\n    });\n  }\n  if (status === 'cancelled' && dayStr === todayStr) {\n    todayCancellations.push({\n      time: dt.toFormat('hh:mm a'),\n      patient: String(r.patient_name || 'Unknown patient'),\n      doctor: String(r.doctor || 'Unassigned'),\n    });\n  }\n}\n\ntomorrowAppts.sort((a, b) => a.sortKey - b.sortKey);\n\n// Build HTML lists\nlet apptRows = '';\nif (tomorrowAppts.length) {\n  for (const a of tomorrowAppts) {\n    apptRows += '<li><strong>' + a.time + '</strong> — ' + a.patient + ' (with ' + a.doctor + ')</li>';\n  }\n} else {\n  apptRows = '<li>No appointments scheduled for tomorrow.</li>';\n}\n\nlet cancelRows = '';\nif (todayCancellations.length) {\n  for (const c of todayCancellations) {\n    cancelRows += '<li>' + c.patient + ' — ' + c.time + ' (with ' + c.doctor + ')</li>';\n  }\n} else {\n  cancelRows = '<li>No cancellations today.</li>';\n}\n\nconst dateLabel = tomorrow.toFormat('cccc, dd LLL yyyy');\n\nconst html =\n  '<div style=\"font-family:Arial,sans-serif;color:#222;line-height:1.5;\">' +\n  '<h2 style=\"color:#1a73e8;\">Clinic Daily Summary</h2>' +\n  '<p>Hello team,</p>' +\n  '<p>Here is your end-of-day summary for ' + now.toFormat('cccc, dd LLL yyyy') + '.</p>' +\n  '<h3>Tomorrow (' + dateLabel + '): ' + tomorrowAppts.length + ' appointment(s)</h3>' +\n  '<ul>' + apptRows + '</ul>' +\n  '<h3>Cancellations today: ' + todayCancellations.length + '</h3>' +\n  '<ul>' + cancelRows + '</ul>' +\n  '<p>Have a restful evening,<br/>The Clinic Automation</p>' +\n  '</div>';\n\nreturn [{\n  json: {\n    tomorrow_count: tomorrowAppts.length,\n    cancellation_count: todayCancellations.length,\n    date_label: dateLabel,\n    summary_html: html,\n  }\n}];\n"
+      },
+      "id": "f39e6a6b-0be2-417c-af05-50d883bad91c",
+      "name": "Build Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "husnainfareed45@gmail.com",
+        "subject": "=Clinic Daily Summary — {{ $json.tomorrow_count }} appointment(s) tomorrow, {{ $json.cancellation_count }} cancellation(s) today",
+        "message": "={{ $json.summary_html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "f16216d5-c96c-41e4-923d-5ee8357dcefe",
+      "name": "Email Daily Summary",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        0
+      ],
+      "webhookId": "5e7e7b48-badb-46ab-a795-500e79d55e34",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1pFlmCEGxw2VC565",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily 18:00": {
+      "main": [
+        [
+          {
+            "node": "Read Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Appointments": {
+      "main": [
+        [
+          {
+            "node": "Build Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary": {
+      "main": [
+        [
+          {
+            "node": "Email Daily Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "errorWorkflow": "mjezSMFrsHYjdY0D",
+    "timezone": "Asia/Karachi"
+  },
+  "versionId": "701543e2-3afa-4063-b17b-98fc22cbc3a2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5fc29b21b3cce4848409a8895eca6238fb5c5cff4869bfcc6529bbfa32c285b4"
+  },
+  "nodeGroups": [],
+  "id": "HVqXIbbs0fEYSNTL",
+  "tags": []
+}
