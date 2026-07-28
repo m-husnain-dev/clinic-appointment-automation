@@ -36,6 +36,12 @@ staff automatically.
 **Flow:** Daily 18:00 → Read Appointments → Build Summary → 
 Email Daily Summary
 
+## Example Output
+   ![Reminder Email](reminder-email-example.png)
+
+## Example Output
+   ![Reminder Email](DailySummary.png)
+
 ## Tech Stack
 
 - **n8n** — workflow automation
